@@ -116,7 +116,6 @@ func main() {
 		}
 
 		fmt.Printf("%v\n", string(out))
-
 	}
 }
 
