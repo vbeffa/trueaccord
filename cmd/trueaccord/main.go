@@ -40,13 +40,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(string(respBody))
+	// fmt.Println(string(respBody))
 
 	var debts []debt
 	if err := json.Unmarshal(respBody, &debts); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%v\n", debts)
+	// fmt.Printf("%v\n", debts)
 
 	resp, err = http.Get("https://my-json-server.typicode.com/druska/trueaccord-mock-payments-api/payment_plans")
 	if err != nil {
@@ -58,13 +58,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(string(respBody))
+	// fmt.Println(string(respBody))
 
 	var paymentPlans []paymentPlan
 	if err := json.Unmarshal(respBody, &paymentPlans); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%v\n", paymentPlans)
+	// fmt.Printf("%v\n", paymentPlans)
 
 	resp, err = http.Get("https://my-json-server.typicode.com/druska/trueaccord-mock-payments-api/payments")
 	if err != nil {
@@ -76,20 +76,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(string(respBody))
+	// fmt.Println(string(respBody))
 
 	var payments []payment
 	if err := json.Unmarshal(respBody, &payments); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%v\n", payments)
+	// fmt.Printf("%v\n", payments)
 
 	type outputDebt struct {
 		Id                 int     `json:"id"`
 		Amount             float32 `json:"amount"`
 		IsInPaymentPlan    bool    `json:"is_in_payment_plan"`
 		RemainingAmount    float32 `json:"remaining_amount"`
-		NextPaymentDueDate string  `json:"next_payment_due_date"`
+		NextPaymentDueDate *string `json:"next_payment_due_date"`
 	}
 
 	for _, debt := range debts {
@@ -101,8 +101,13 @@ func main() {
 		}
 		if od.IsInPaymentPlan {
 			pp := debt.findPaymentPlan(paymentPlans)
-			od.RemainingAmount = debt.remainingAmount(pp, payments)
-			od.NextPaymentDueDate = pp.nextPaymentDueDate(payments).Format("2006-01-02")
+			foundPayments := pp.findPayments(payments)
+			od.RemainingAmount = debt.remainingAmount(pp, foundPayments)
+			nextPDD := pp.nextPaymentDueDate(foundPayments)
+			if !(time.Time{}).Equal(nextPDD) {
+				npdd := nextPDD.Format("2006-01-02")
+				od.NextPaymentDueDate = &npdd
+			}
 		}
 
 		out, err := json.Marshal(od)
@@ -140,9 +145,9 @@ func (pp *paymentPlan) findPayments(allPayments []payment) []payment {
 	return foundPayments
 }
 
-func (d *debt) remainingAmount(pp *paymentPlan, allPayments []payment) (remainingAmount float32) {
+func (d *debt) remainingAmount(pp *paymentPlan, payments []payment) (remainingAmount float32) {
 	remainingAmount = d.Amount
-	for _, p := range pp.findPayments(allPayments) {
+	for _, p := range payments {
 		remainingAmount = remainingAmount - p.Amount
 	}
 	return
