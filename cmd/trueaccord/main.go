@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 )
 
 type debt struct {
@@ -92,7 +93,24 @@ func main() {
 	}
 
 	for _, debt := range debts {
-		fmt.Printf("%v\n", debt)
+		od := outputDebt{
+			Id:              debt.Id,
+			Amount:          debt.Amount,
+			IsInPaymentPlan: debt.isInPaymentPlan(paymentPlans),
+			RemainingAmount: debt.Amount,
+		}
+		if od.IsInPaymentPlan {
+			pp := debt.findPaymentPlan(paymentPlans)
+			od.RemainingAmount = debt.remainingAmount(pp, payments)
+			od.NextPaymentDueDate = pp.nextPaymentDueDate(payments).Format("2006-01-02")
+		}
+
+		out, err := json.Marshal(od)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Printf("%v\n", string(out))
 
 	}
 }
@@ -111,7 +129,7 @@ func (d *debt) findPaymentPlan(paymentPlans []paymentPlan) *paymentPlan {
 	return nil
 }
 
-func findPayments(pp *paymentPlan, allPayments []payment) []payment {
+func (pp *paymentPlan) findPayments(allPayments []payment) []payment {
 	var foundPayments []payment
 	for _, p := range allPayments {
 		if pp.Id == p.PaymentPlanId {
@@ -124,8 +142,32 @@ func findPayments(pp *paymentPlan, allPayments []payment) []payment {
 
 func (d *debt) remainingAmount(pp *paymentPlan, allPayments []payment) (remainingAmount float32) {
 	remainingAmount = d.Amount
-	for _, p := range findPayments(pp, allPayments) {
+	for _, p := range pp.findPayments(allPayments) {
 		remainingAmount = remainingAmount - p.Amount
 	}
 	return
+}
+
+func mostRecentPayment(payments []payment) (mostRecentPayment time.Time) {
+	for _, p := range payments {
+		var t time.Time
+		var err error
+		if t, err = time.Parse("2006-01-02", p.Date); err != nil {
+			log.Fatal(err)
+		}
+		if t.After(mostRecentPayment) {
+			mostRecentPayment = t
+		}
+	}
+	return
+}
+
+func (pp *paymentPlan) nextPaymentDueDate(payments []payment) time.Time {
+	switch pp.InstallmentFrequency {
+	case "WEEKLY":
+		return mostRecentPayment(payments).Add(7 * 24 * time.Hour)
+	case "BI_WEEKLY":
+		return mostRecentPayment(payments).Add(14 * 24 * time.Hour)
+	}
+	return time.Time{} // should not happen
 }
